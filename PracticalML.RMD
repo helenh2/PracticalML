@@ -1,0 +1,136 @@
+---
+title: "Practical ML on Human Activity Recognition data"
+output: html_document
+---
+
+## Executive Summary
+This project is to apply the machine learning algorithm and build a prediction model on some human activity data, which is collected via accelerometers on the belt, forearm, arm, and dumbell of 6 participants, who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More details regards to the data and overall background, please refer to original website <http://groupware.les.inf.puc-rio.br/har>.
+
+This report is a R markdown document generated in **knitr** to record the process of building the model. Given a sufficient number of data in training dataset, it was split into training & validation.There are many influential columns within the dataset, and hence **randomForest** model makes it the easiest to implement yet a high accuracy approach. A few preprocess steps were carried out on training/validation dataet first, and later applied to testing dataset for prediction.
+
+## Building Predictive Model
+
+### Data Download and Import 
+Data provided by above link are present in two dataset:
+
+* [training data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+* [test data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+CSV files are downloaded to working directory.
+
+```{r results="hide"}
+# training
+url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(url, destfile = "./pml-training.csv")
+  
+# test
+url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url, destfile = "./pml-testing.csv")
+```
+
+Datasets are imported via ```{r}read.csv```
+
+```{r}
+training_csv <- read.csv("pml-training.csv", header=TRUE, sep=",", na.strings=c("NA",""))
+testing_csv <- read.csv("pml-testing.csv", header=TRUE, sep=",", na.strings=c("NA",""))
+```
+
+A quick summary/stat look is given by
+```{r results='hide'}
+str(training_csv)
+```
+
+where it's not very easy to see all features on each fields due to the amount of columns we are dealing with.
+
+### Data Partitioning
+As mentioned in **Executive Summary**, an additional set for validation is created out of training set. Data partitioning is done with a 75% (vs 25%) split from below:
+
+```{r}
+require(caret)
+# partitioning with 75% vs 25%
+inTrain <- createDataPartition(training_csv$classe, p=0.75, list=FALSE)
+training <- training_csv[inTrain,-1]
+validation <- training_csv[-inTrain,-1]
+```
+
+The first columns of indexing number is removed as it's non-relevant to prediction.
+
+### Data Exploration and Further Cleaning
+Applying basic check around data quality on training set, we found there are a large proportion of fields NA or blank. Fields with lots of NA or blank will not really contribute any good to the model, and hence they should be removed from prediction.
+
+```{r}
+# further subsetting of quality data
+remain <- c((colSums(!is.na(training[,-ncol(training)])) >= 0.6*nrow(training)))
+training   <-  training[,remain]
+validation <- validation[,remain]
+```
+
+
+### Modelling
+Here **randomForest** modelling is applied with outcome as **classe** with dataset **training**. The execution speed is relatively slower, but the model normally comes with a high accuracy due to biased estimates are most likely to balance out during the process. This requires packages ```{r} caret``` & ```{r} randomForest```
+
+```{r}
+require(randomForest)
+model <- randomForest(classe~.,data=training)
+model
+```
+
+### Validation
+To get some extend of confidence in the model, we can use **validation** dataset to evaluate how accurate the model would be.
+
+```{r}
+confusionMatrix(predict(model,newdata=validation[,-ncol(validation)]),validation$classe)
+```
+
+This means the model has approx. 99.8% accuracy based on fitting against validation data.
+
+## Applying Model for Prediction
+The second part here is to apply the model to predict with test data. Identical tranformation or preprocess must be applied as training set, hence recall the same data processing steps to test data as below.
+
+```{r}
+# Remove ID Row
+testing <- testing_csv[,-1] 
+# Only keep columns as training set
+testing <- testing[ , remain]
+# Remove additional problem_id
+testing <- testing[,-ncol(testing)]
+```
+
+The same basic checkings are applied on **testing** data after import. One noticable difference is data type on some columns are different, i.e. where training had numeric testing may have logic (as all NA values). Hence we need to coerce testing data to follow identical data type with training data (which model was built on). A dummy record from training was binded to testing, and later we will only be looking at testing records.
+
+```{r}
+# Dummy record 100 from training (excl last column as outcome)
+mytesting <- rbind(training[100, -ncol(training)] , testing) 
+# re-apply ID Row to row.names 
+row.names(mytesting) <- c(99, 1:20)
+```
+
+### Predicting on test data
+
+```{r}
+# dummy record from training is taken out from prediction here
+predictions <- predict(model,newdata=mytesting[-1,])
+predictions
+```
+
+### Output prediction into split files
+Using functions provided by Coursera Practical Machine Learning, prediction files are plit and produced into desired location for upload.
+
+```{r}
+# pml_write_files = function(x){
+#   n = length(x)
+#   for(i in 1:n){
+#     filename = paste0("./answers/problem_id_",i,".txt")
+#     write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+#   }
+# }
+# 
+# pml_write_files(predictions)
+
+```
+
+
+
+
+
